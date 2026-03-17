@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <title>家の備品管理</title>
+  </head>
+  <body>
+    <h1>家の備品管理</h1>
+
+    <div id="tabBar"></div>
+
+    <div id="tab-main">
+      <div>
+        <input type="text" id="itemName" placeholder="備品名（例：ヨーグルト）">
+        <select id="itemQtyType" onchange="updateQtyInput()">
+          <option value="個数">個数</option>
+          <option value="ml">ml</option>
+          <option value="g">g</option>
+          <option value="三択">多い/普通/少ない</option>
+        </select>
+        <input type="number" id="itemQtyNum" placeholder="量" min="0">
+        <select id="itemQtyLevel" style="display:none">
+          <option value="多い">多い</option>
+          <option value="普通">普通</option>
+          <option value="少ない">少ない</option>
+        </select>
+        <input type="text" id="itemTags" placeholder="タグ（読点区切り：食品、冷蔵庫）">
+        <select id="itemFolder"></select>
+        <button onclick="addItem()">追加</button>
+      </div>
+      <input type="text" id="searchInput" placeholder="タグor名称で検索" oninput="searchItems()">
+      <ul id="itemList"></ul>
+    </div>
+
+    <div id="tab-trash" style="display:none">
+      <p>削除から7日で自動的に完全削除されます</p>
+      <ul id="trashList"></ul>
+    </div>
+
+    <script>
+      let items   = JSON.parse(localStorage.getItem("items"))   || [];
+      let folders = JSON.parse(localStorage.getItem("folders")) || ["未分類", "食品", "雑貨"];
+      let currentTab = "all";
+
+      cleanTrash();
+      renderTabBar();
+      showTab("all");
+
+      // タブバーを描画する
+      function renderTabBar() {
+        let bar = document.getElementById("tabBar");
+        bar.innerHTML = "";
+
+        // 「すべて」タブ
+        let allBtn = document.createElement("button");
+        allBtn.textContent = "備品リスト";
+        allBtn.onclick = function() { showTab("all"); };
+        bar.appendChild(allBtn);
+
+        // フォルダタブ（ダブルクリックで削除）
+        for (let i = 0; i < folders.length; i++) {
+          (function(folderName) {
+            // 未分類は削除不可
+            if (folderName === "未分類") {
+              let btn = document.createElement("button");
+              btn.textContent = folderName;
+              btn.onclick = function() { showTab(folderName); };
+              bar.appendChild(btn);
+              return;
+            }
+
+            let btn = document.createElement("button");
+            btn.textContent = folderName;
+            btn.title = "ダブルクリックで削除";
+            btn.onclick = function() { showTab(folderName); };
+
+            // ダブルクリックでフォルダ削除
+            btn.ondblclick = function(e) {
+              e.stopPropagation();
+              let step1 = confirm("「" + folderName + "」フォルダを削除しますか？\n中の備品は未分類に移動します。");
+              if (!step1) return;
+              let step2 = confirm("本当に削除しますか？\nこの操作は取り消せません。");
+              if (!step2) return;
+              deleteFolder(folderName);
+            };
+
+            bar.appendChild(btn);
+          })(folders[i]);
+        }
+
+        // フォルダ追加ボタン
+        let addFolderBtn = document.createElement("button");
+        addFolderBtn.textContent = "＋フォルダ";
+        addFolderBtn.onclick = function() {
+          let name = prompt("フォルダ名を入力してください");
+          if (name === null || name.trim() === "") return;
+          name = name.trim();
+
+          // 削除済みフォルダと同じ名前なら復元
+          if (folders.includes(name)) {
+            alert("同じ名前のフォルダが既にあります");
+            return;
+          }
+
+          folders.push(name);
+          saveFolders();
+
+          // 削除されたフォルダ名が一致する備品を戻す
+          for (let i = 0; i < items.length; i++) {
+            if (items[i].folder === name && items[i].deletedAt === null) {
+              // folder は既に name のまま保持されているので表示が戻る
+            }
+          }
+          localStorage.setItem("items", JSON.stringify(items));
+
+          renderTabBar();
+          updateFolderSelect();
+          showTab(name);
+        };
+        bar.appendChild(addFolderBtn);
+
+        // ゴミ箱タブ
+        let trashBtn = document.createElement("button");
+        trashBtn.textContent = "ゴミ箱";
+        trashBtn.onclick = function() { showTab("trash"); };
+        bar.appendChild(trashBtn);
+      }
+
+      // フォルダを削除する
+      function deleteFolder(folderName) {
+        // フォルダリストから削除
+        folders = folders.filter(function(f) { return f !== folderName; });
+        saveFolders();
+
+        // 備品のフォルダ情報は folderName のまま残す（消さない）
+        // → folders に存在しないフォルダ名 = 削除済みフォルダ扱い
+        // → updateList で「未分類」として表示する
+        localStorage.setItem("items", JSON.stringify(items));
+
+        renderTabBar();
+
+        // 削除したタブを見ていたら全体に戻る
+        if (currentTab === folderName) showTab("all");
+        else showTab(currentTab);
+      }
+
+      // 表示上のフォルダ名を返す（削除済みフォルダなら「未分類」扱い）
+      function displayFolder(item) {
+        if (folders.includes(item.folder)) return item.folder;
+        return "未分類";
+      }
+
+      // 追加フォームのフォルダ選択を更新する
+      function updateFolderSelect() {
+        let sel = document.getElementById("itemFolder");
+        sel.innerHTML = "";
+        for (let i = 0; i < folders.length; i++) {
+          let opt = document.createElement("option");
+          opt.value = folders[i];
+          opt.textContent = folders[i];
+          if (folders[i] === currentTab) opt.selected = true;
+          sel.appendChild(opt);
+        }
+      }
+
+      // タブを切り替える
+      function showTab(tab) {
+        currentTab = tab;
+        document.getElementById("tab-main").style.display  = "none";
+        document.getElementById("tab-trash").style.display = "none";
+
+        if (tab === "trash") {
+          document.getElementById("tab-trash").style.display = "block";
+          updateTrash();
+        } else {
+          document.getElementById("tab-main").style.display = "block";
+          updateFolderSelect();
+          updateList();
+        }
+      }
+
+      // 量の入力欄を切り替える
+      function updateQtyInput() {
+        let type = document.getElementById("itemQtyType").value;
+        if (type === "三択") {
+          document.getElementById("itemQtyNum").style.display   = "none";
+          document.getElementById("itemQtyLevel").style.display = "inline";
+        } else {
+          document.getElementById("itemQtyNum").style.display   = "inline";
+          document.getElementById("itemQtyLevel").style.display = "none";
+        }
+      }
+
+      // 備品を追加する
+      function addItem() {
+        let name   = document.getElementById("itemName").value;
+        let type   = document.getElementById("itemQtyType").value;
+        let qty    = type === "三択"
+                     ? document.getElementById("itemQtyLevel").value
+                     : document.getElementById("itemQtyNum").value;
+        let tags   = document.getElementById("itemTags").value;
+        let folder = document.getElementById("itemFolder").value;
+
+        if (name === "") {
+          alert("備品名を入力してください");
+          return;
+        }
+
+        items.push({ name: name, qtyType: type, qty: qty, tags: tags, folder: folder, note: "", deletedAt: null });
+        updateList();
+
+        document.getElementById("itemName").value   = "";
+        document.getElementById("itemQtyNum").value = "";
+        document.getElementById("itemTags").value   = "";
+      }
+
+      // 量の表示テキスト
+      function qtyText(item) {
+        if (item.qtyType === "三択") return item.qty;
+        if (item.qtyType === "個数") return item.qty + "個";
+        return item.qty + item.qtyType;
+      }
+
+      // リストの1行を作る共通関数
+      function createItemRow(i) {
+        let item = items[i];
+        let li = document.createElement("li");
+
+        // 表示モード
+        let displaySpan = document.createElement("span");
+        displaySpan.textContent = item.name + "　" + qtyText(item);
+        displaySpan.style.cursor = "pointer";
+        displaySpan.title = "クリックして編集";
+
+        // 編集モード
+        let editDiv = document.createElement("div");
+        editDiv.style.display = "none";
+
+        displaySpan.onclick = function() {
+          displaySpan.style.display = "none";
+          editDiv.style.display     = "block";
+        };
+
+        let nameInput = document.createElement("input");
+        nameInput.type  = "text";
+        nameInput.value = item.name;
+
+        let typeSelect = document.createElement("select");
+        ["個数", "ml", "g", "三択"].forEach(function(t) {
+          let opt = document.createElement("option");
+          opt.value = t;
+          opt.textContent = t === "三択" ? "多い/普通/少ない" : t;
+          if (t === item.qtyType) opt.selected = true;
+          typeSelect.appendChild(opt);
+        });
+
+        let qtyNumInput = document.createElement("input");
+        qtyNumInput.type  = "number";
+        qtyNumInput.value = item.qtyType !== "三択" ? item.qty : "";
+        qtyNumInput.style.display = item.qtyType === "三択" ? "none" : "inline";
+
+        let qtyLevelSelect = document.createElement("select");
+        ["多い", "普通", "少ない"].forEach(function(l) {
+          let opt = document.createElement("option");
+          opt.value = l;
+          opt.textContent = l;
+          if (l === item.qty) opt.selected = true;
+          qtyLevelSelect.appendChild(opt);
+        });
+        qtyLevelSelect.style.display = item.qtyType === "三択" ? "inline" : "none";
+
+        typeSelect.onchange = function() {
+          if (typeSelect.value === "三択") {
+            qtyNumInput.style.display    = "none";
+            qtyLevelSelect.style.display = "inline";
+          } else {
+            qtyNumInput.style.display    = "inline";
+            qtyLevelSelect.style.display = "none";
+          }
+        };
+
+        let tagsInput = document.createElement("input");
+        tagsInput.type  = "text";
+        tagsInput.value = item.tags;
+
+        // フォルダ変更
+        let folderLabel = document.createElement("div");
+        folderLabel.textContent = "フォルダ: （元のフォルダ: " + item.folder + "）";
+
+        let folderSelect = document.createElement("select");
+        for (let j = 0; j < folders.length; j++) {
+          let opt = document.createElement("option");
+          opt.value = folders[j];
+          opt.textContent = folders[j];
+          if (folders[j] === item.folder) opt.selected = true;
+          folderSelect.appendChild(opt);
+        }
+
+        let noteLabel = document.createElement("div");
+        noteLabel.textContent = "備考:";
+
+        let noteInput = document.createElement("textarea");
+        noteInput.value       = item.note || "";
+        noteInput.placeholder = "備考（任意）";
+        noteInput.rows        = 2;
+
+        let saveBtn = document.createElement("button");
+        saveBtn.textContent = "保存";
+        saveBtn.onclick = function() {
+          items[i].name    = nameInput.value;
+          items[i].qtyType = typeSelect.value;
+          items[i].qty     = typeSelect.value === "三択" ? qtyLevelSelect.value : qtyNumInput.value;
+          items[i].tags    = tagsInput.value;
+          items[i].folder  = folderSelect.value;
+          items[i].note    = noteInput.value;
+          localStorage.setItem("items", JSON.stringify(items));
+
+          displaySpan.textContent   = items[i].name + "　" + qtyText(items[i]);
+          editDiv.style.display     = "none";
+          displaySpan.style.display = "inline";
+        };
+
+        let cancelBtn = document.createElement("button");
+        cancelBtn.textContent = "キャンセル";
+        cancelBtn.onclick = function() {
+          editDiv.style.display     = "none";
+          displaySpan.style.display = "inline";
+        };
+
+        let deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "削除";
+        deleteBtn.onclick = function() {
+          items[i].deletedAt = new Date().toISOString().slice(0, 10);
+          updateList();
+        };
+
+        editDiv.appendChild(nameInput);
+        editDiv.appendChild(typeSelect);
+        editDiv.appendChild(qtyNumInput);
+        editDiv.appendChild(qtyLevelSelect);
+        editDiv.appendChild(tagsInput);
+        editDiv.appendChild(folderLabel);
+        editDiv.appendChild(folderSelect);
+        editDiv.appendChild(noteLabel);
+        editDiv.appendChild(noteInput);
+        editDiv.appendChild(saveBtn);
+        editDiv.appendChild(cancelBtn);
+
+        li.appendChild(displaySpan);
+        li.appendChild(editDiv);
+        li.appendChild(deleteBtn);
+        return li;
+      }
+
+      // 備品リストを表示する
+      function updateList() {
+        localStorage.setItem("items", JSON.stringify(items));
+
+        let list = document.getElementById("itemList");
+        list.innerHTML = "";
+
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].deletedAt !== null) continue;
+
+          let df = displayFolder(items[i]);
+
+          // 全体タブ：全部表示
+          // フォルダタブ：そのフォルダ or 削除済みフォルダ→未分類扱い
+          if (currentTab === "all") {
+            list.appendChild(createItemRow(i));
+          } else if (currentTab === "未分類" && df === "未分類") {
+            list.appendChild(createItemRow(i));
+          } else if (currentTab !== "未分類" && items[i].folder === currentTab) {
+            list.appendChild(createItemRow(i));
+          }
+        }
+      }
+
+      // タグor名称で検索する
+      function searchItems() {
+        let keyword = document.getElementById("searchInput").value;
+        if (keyword === "") {
+          updateList();
+          return;
+        }
+
+        let list = document.getElementById("itemList");
+        list.innerHTML = "";
+
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].deletedAt !== null) continue;
+
+          let df = displayFolder(items[i]);
+          let inScope = currentTab === "all"
+            || (currentTab === "未分類" && df === "未分類")
+            || (currentTab !== "未分類" && items[i].folder === currentTab);
+
+          if (!inScope) continue;
+
+          let nameMatch = items[i].name === keyword;
+          let tagMatch  = items[i].tags.split("、").includes(keyword);
+          if (nameMatch || tagMatch) {
+            list.appendChild(createItemRow(i));
+          }
+        }
+      }
+
+      // ゴミ箱を表示する
+      function updateTrash() {
+        let list = document.getElementById("trashList");
+        list.innerHTML = "";
+
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].deletedAt === null) continue;
+
+          let item = items[i];
+          let li = document.createElement("li");
+          li.textContent = item.name + "　" + qtyText(item) + "　削除日:" + item.deletedAt;
+
+          let restoreBtn = document.createElement("button");
+          restoreBtn.textContent = "元に戻す";
+          restoreBtn.onclick = function() {
+            items[i].deletedAt = null;
+            localStorage.setItem("items", JSON.stringify(items));
+            updateTrash();
+          };
+
+          let permDeleteBtn = document.createElement("button");
+          permDeleteBtn.textContent = "完全削除";
+          permDeleteBtn.onclick = function() {
+            items.splice(i, 1);
+            localStorage.setItem("items", JSON.stringify(items));
+            updateTrash();
+          };
+
+          li.appendChild(restoreBtn);
+          li.appendChild(permDeleteBtn);
+          list.appendChild(li);
+        }
+      }
+
+      // 7日以上経ったゴミ箱アイテムを自動削除
+      function cleanTrash() {
+        let today = new Date();
+        items = items.filter(function(item) {
+          if (item.deletedAt === null) return true;
+          let diff = (today - new Date(item.deletedAt)) / (1000 * 60 * 60 * 24);
+          return diff < 7;
+        });
+        localStorage.setItem("items", JSON.stringify(items));
+      }
+
+      // フォルダを保存する
+      function saveFolders() {
+        localStorage.setItem("folders", JSON.stringify(folders));
+      }
+    </script>
+  </body>
+</html>
