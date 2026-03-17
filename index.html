@@ -130,6 +130,12 @@
         trashBtn.textContent = "ゴミ箱";
         trashBtn.onclick = function() { showTab("trash"); };
         bar.appendChild(trashBtn);
+
+        // データ移行ボタン
+        let transferBtn = document.createElement("button");
+        transferBtn.textContent = "データ移行";
+        transferBtn.onclick = function() { toggleTransfer(); };
+        bar.appendChild(transferBtn);
         // 現在のタブのボタンに色をつける
         let buttons = bar.getElementsByTagName("button");
         for (let i = 0; i < buttons.length; i++) {
@@ -527,7 +533,6 @@
       }
     </script>
      <!-- データ移行エリア -->
-    <button onclick="toggleTransfer()">データ移行</button>
 
     <div id="transfer" style="display:none">
       <h2>データ移行</h2>
