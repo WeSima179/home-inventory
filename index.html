@@ -48,9 +48,10 @@
       let folders = JSON.parse(localStorage.getItem("folders")) || ["未分類", "食品", "雑貨"];
       let currentTab = "all";
 
-      cleanTrash();
       renderTabBar();
       showTab("all");
+      cleanTrash();
+      saveBackup();
 
       // タブバーを描画する
       function renderTabBar() {
@@ -479,13 +480,75 @@
       function saveFolders() {
         localStorage.setItem("folders", JSON.stringify(folders));
       }
+
+      // バックアップを保存する
+      function saveBackup() {
+        let today = new Date().toISOString().slice(0, 10);
+        let lastBackup = localStorage.getItem("backup-last-date");
+
+        if (lastBackup === today) return;
+
+        let data = JSON.stringify({
+          items:   items,
+          folders: folders
+        });
+
+        localStorage.setItem("backup-" + today, data);
+        localStorage.setItem("backup-last-date", today);
+
+        let keys = Object.keys(localStorage);
+        for (let i = 0; i < keys.length; i++) {
+          if (!keys[i].startsWith("backup-20")) continue;
+          let dateStr = keys[i].replace("backup-", "");
+          let diff = (new Date() - new Date(dateStr)) / (1000 * 60 * 60 * 24);
+          if (diff > 30) localStorage.removeItem(keys[i]);
+        }
+      }
        // データ移行エリアの表示・非表示を切り替える
       function toggleTransfer() {
         let div = document.getElementById("transfer");
         if (div.style.display === "none") {
           div.style.display = "block";
+          renderBackupList();
         } else {
           div.style.display = "none";
+        }
+      }
+
+      // バックアップ一覧を表示する
+      function renderBackupList() {
+        let listDiv = document.getElementById("backupList");
+        listDiv.innerHTML = "";
+
+        let keys = Object.keys(localStorage)
+          .filter(function(k) { return k.startsWith("backup-20"); })
+          .sort()
+          .reverse();
+
+        if (keys.length === 0) {
+          listDiv.textContent = "バックアップはありません";
+          return;
+        }
+
+        for (let i = 0; i < keys.length; i++) {
+          (function(key) {
+            let date = key.replace("backup-", "");
+            let btn = document.createElement("button");
+            btn.textContent = date + " のデータを復元";
+            btn.onclick = function() {
+              let confirmed = confirm(date + " のデータに復元しますか？\n現在のデータは上書きされます。");
+              if (!confirmed) return;
+              let data = JSON.parse(localStorage.getItem(key));
+              items   = data.items;
+              folders = data.folders;
+              localStorage.setItem("items",   JSON.stringify(items));
+              localStorage.setItem("folders", JSON.stringify(folders));
+              renderTabBar();
+              showTab("all");
+              alert("復元完了！");
+            };
+            listDiv.appendChild(btn);
+          })(keys[i]);
         }
       }
 
@@ -543,6 +606,9 @@
       </div>
 
       <textarea id="transferArea" rows="5" placeholder="エクスポートしたデータをここに貼り付けてインポート"></textarea>
+
+      <h2>バックアップ（30日分）</h2>
+      <div id="backupList"></div>
     </div>
   </body>
 </html>
