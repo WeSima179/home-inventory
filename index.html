@@ -473,7 +473,17 @@
       function saveFolders() {
         localStorage.setItem("folders", JSON.stringify(folders));
       }
-       // データをエクスポートする
+       // データ移行エリアの表示・非表示を切り替える
+      function toggleTransfer() {
+        let div = document.getElementById("transfer");
+        if (div.style.display === "none") {
+          div.style.display = "block";
+        } else {
+          div.style.display = "none";
+        }
+      }
+
+      // データをエクスポートする
       function exportData() {
         let data = {
           items:   JSON.parse(localStorage.getItem("items"))   || [],
@@ -516,8 +526,10 @@
         }
       }
     </script>
-    <!-- データ移行エリア -->
-    <div id="transfer">
+     <!-- データ移行エリア -->
+    <button onclick="toggleTransfer()">データ移行</button>
+
+    <div id="transfer" style="display:none">
       <h2>データ移行</h2>
 
       <div>
