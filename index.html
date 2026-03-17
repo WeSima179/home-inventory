@@ -130,6 +130,17 @@
         trashBtn.textContent = "ゴミ箱";
         trashBtn.onclick = function() { showTab("trash"); };
         bar.appendChild(trashBtn);
+        // 現在のタブのボタンに色をつける
+        let buttons = bar.getElementsByTagName("button");
+        for (let i = 0; i < buttons.length; i++) {
+          if (buttons[i].textContent === "備品リスト" && currentTab === "all") {
+            buttons[i].style.backgroundColor = "#4a90d9";
+            buttons[i].style.color = "#ffffff";
+          } else if (buttons[i].textContent === currentTab) {
+            buttons[i].style.backgroundColor = "#4a90d9";
+            buttons[i].style.color = "#ffffff";
+          }
+        }
       }
 
       // フォルダを削除する
