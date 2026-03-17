@@ -483,27 +483,26 @@
 
       // バックアップを保存する
       function saveBackup() {
-        let today = new Date().toISOString().slice(0, 10);
-        let lastBackup = localStorage.getItem("backup-last-date");
+  let now = new Date();
+  let today = now.toISOString().slice(0, 10);
+  let lastBackup = localStorage.getItem("backup-last-date");
 
-        if (lastBackup === today) return;
+  if (lastBackup === today) return;
 
-        let data = JSON.stringify({
-          items:   items,
-          folders: folders
-        });
+  let key = now.toISOString().slice(0, 16).replace("T", "_").replace(":", "-");
+  let data = JSON.stringify({ items: items, folders: folders });
 
-        localStorage.setItem("backup-" + today, data);
-        localStorage.setItem("backup-last-date", today);
+  localStorage.setItem("backup-" + key, data);
+  localStorage.setItem("backup-last-date", today);
 
-        let keys = Object.keys(localStorage);
-        for (let i = 0; i < keys.length; i++) {
-          if (!keys[i].startsWith("backup-20")) continue;
-          let dateStr = keys[i].replace("backup-", "");
-          let diff = (new Date() - new Date(dateStr)) / (1000 * 60 * 60 * 24);
-          if (diff > 30) localStorage.removeItem(keys[i]);
-        }
-      }
+  let keys = Object.keys(localStorage);
+  for (let i = 0; i < keys.length; i++) {
+    if (!keys[i].startsWith("backup-20")) continue;
+    let dateStr = keys[i].replace("backup-", "").slice(0, 10);
+    let diff = (new Date() - new Date(dateStr)) / (1000 * 60 * 60 * 24);
+    if (diff > 30) localStorage.removeItem(keys[i]);
+  }
+}
        // データ移行エリアの表示・非表示を切り替える
       function toggleTransfer() {
         let div = document.getElementById("transfer");
@@ -531,12 +530,12 @@
         }
 
         for (let i = 0; i < keys.length; i++) {
-          (function(key) {
-            let date = key.replace("backup-", "");
-            let btn = document.createElement("button");
-            btn.textContent = date + " のデータを復元";
-            btn.onclick = function() {
-              let confirmed = confirm(date + " のデータに復元しますか？\n現在のデータは上書きされます。");
+  (function(key) {
+    let label = key.replace("backup-", "").replace("_", " ").replace(/-(\d{2})$/, ":$1");
+    let btn = document.createElement("button");
+    btn.textContent = label + " のデータを復元";
+    btn.onclick = function() {
+      let confirmed = confirm(label + " のデータに復元しますか？\n現在のデータは上書きされます。");
               if (!confirmed) return;
               let data = JSON.parse(localStorage.getItem(key));
               items   = data.items;
@@ -594,6 +593,29 @@
           alert("データの読み込みに失敗しました。正しい形式か確認してください。");
         }
       }
+      function manualBackup() {
+  let confirmed = confirm("現在のデータをバックアップしますか？\n30件を超える場合は最も古いバックアップが削除されます。");
+  if (!confirmed) return;
+
+  let now = new Date();
+  let key = now.toISOString().slice(0, 16).replace("T", "_").replace(":", "-");
+  let data = JSON.stringify({ items: items, folders: folders });
+
+  let keys = Object.keys(localStorage)
+    .filter(function(k) { return k.startsWith("backup-20"); })
+    .sort();
+
+  while (keys.length >= 30) {
+    localStorage.removeItem(keys.shift());
+  }
+
+  localStorage.setItem("backup-" + key, data);
+  localStorage.setItem("backup-last-date", now.toISOString().slice(0, 10));
+
+  renderBackupList();
+  alert("バックアップを保存しました！（" + key.replace("_", " ").replace(/-(\d{2})$/, ":$1") + "）");
+}
+    
     </script>
      <!-- データ移行エリア -->
 
@@ -601,10 +623,10 @@
       <h2>データ移行</h2>
 
       <div>
-        <button onclick="exportData()">エクスポート</button>
-        <button onclick="importData()">インポート</button>
-      </div>
-
+  <button onclick="exportData()">エクスポート</button>
+  <button onclick="importData()">インポート</button>
+</div>
+<button onclick="manualBackup()">今すぐバックアップ</button>
       <textarea id="transferArea" rows="5" placeholder="エクスポートしたデータをここに貼り付けてインポート"></textarea>
 
       <h2>バックアップ（30日分）</h2>
