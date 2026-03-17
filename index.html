@@ -473,6 +473,59 @@
       function saveFolders() {
         localStorage.setItem("folders", JSON.stringify(folders));
       }
+       // データをエクスポートする
+      function exportData() {
+        let data = {
+          items:   JSON.parse(localStorage.getItem("items"))   || [],
+          folders: JSON.parse(localStorage.getItem("folders")) || []
+        };
+        document.getElementById("transferArea").value = JSON.stringify(data);
+        alert("テキストをコピーして別のデバイスに送ってください！");
+      }
+
+      // データをインポートする
+      function importData() {
+        let text = document.getElementById("transferArea").value;
+        if (text === "") {
+          alert("データを貼り付けてください");
+          return;
+        }
+
+        try {
+          let data = JSON.parse(text);
+          if (!data.items || !data.folders) {
+            alert("データの形式が正しくありません");
+            return;
+          }
+
+          let confirmed = confirm("現在のデータに上書きしますか？");
+          if (!confirmed) return;
+
+          localStorage.setItem("items",   JSON.stringify(data.items));
+          localStorage.setItem("folders", JSON.stringify(data.folders));
+
+          // 再読み込み
+          items   = data.items;
+          folders = data.folders;
+          renderTabBar();
+          showTab("all");
+          alert("インポート完了！");
+
+        } catch(e) {
+          alert("データの読み込みに失敗しました。正しい形式か確認してください。");
+        }
+      }
     </script>
+    <!-- データ移行エリア -->
+    <div id="transfer">
+      <h2>データ移行</h2>
+
+      <div>
+        <button onclick="exportData()">エクスポート</button>
+        <button onclick="importData()">インポート</button>
+      </div>
+
+      <textarea id="transferArea" rows="5" placeholder="エクスポートしたデータをここに貼り付けてインポート"></textarea>
+    </div>
   </body>
 </html>
